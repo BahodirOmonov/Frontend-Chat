@@ -1,10 +1,44 @@
-(async () => {
+let usersLength = 0
+let privateUsersLength = 0
+
+;(async () => {
 	const users = await request("/users")
+	usersLength = users.length
 	profileImageRender(users)
 	renderPrivate(users)
 	renderContacts(users)
-})()
+})()	
 
+
+
+setInterval(async () => {
+	const users = await request("/users")
+
+	if(users.length > usersLength) {
+		usersLength = users.length
+		renderContacts(users)
+	}
+
+	let count = 0
+
+	users.forEach( async user => {
+		const message = await request(`/messages?sendUserId=${user.userId}`)
+		const message2 = await request(`/messages?userId=${user.userId}`)
+
+		if(message.length || message2.length) {
+			count++
+		}
+
+
+		if(users[users.length - 1].userId == user.userId && count > privateUsersLength) {
+			renderPrivate(users)
+		}
+	} )
+
+	const sendUserId = window.localStorage.getItem("sendUserId")
+	renderMessages(sendUserId)
+
+}, 500)
 
 
 composeText.onkeyup = async event => {
@@ -19,25 +53,39 @@ searchText.onkeyup = async event => {
 	renderPrivate(users)
 } 
 
+smileIcon.onclick = () => {
+	comment.value += "😂"
+}
 
-sendButton.onclick = async () => {
-	const userId = window.localStorage.getItem("userId")
+comment.onkeyup = event => {
+	if(event.keyCode != 13) return
+	sendMessage(comment.value)
+	comment.value = null
+}
+
+sendButton.onclick = event => {
+	sendMessage(comment.value)
+}
+
+async function sendMessage(value) {
 	const sendUserId = window.localStorage.getItem("sendUserId")
 
-	comment.value = comment.value.trim()
-	if(!comment.value) return
+	value = value.trim()
+	if(!value) return
 
 	let formData = new FormData()
 	
-	formData.append("messageText", comment.value)
+	formData.append("messageText", value)
 	formData.append("sendUserId", sendUserId)
 
 	const response = await request("/messages", "POST", formData)
 
 	comment.value = null
-	renderContacts()
-	renderMessages(sendUserId)
 
+	const users = await request("/users")
+
+	renderContacts(users)
+	renderMessages(sendUserId)
 }
 
 async function renderContacts (users) {
@@ -76,14 +124,13 @@ async function renderContacts (users) {
 }
 
 async function renderPrivate(users) {
-	const userId = window.localStorage.getItem("userId")
-
 	usersWriter.innerHTML = null
+	let count = 0
 
 	for(let user of users) {
 
-		const message = await request(`/messages?userId=${userId}&sendUserId=${user.userId}`)
-		const message2 = await request(`/messages?userId=${user.userId}&sendUserId=${userId}`)
+		const message = await request(`/messages?sendUserId=${user.userId}`)
+		const message2 = await request(`/messages?userId=${user.userId}`)
 
 		if(message.length || message2.length) {
 			let div = document.createElement("div")
@@ -105,6 +152,8 @@ async function renderPrivate(users) {
 				</div>
 			`
 
+			count++
+
 			usersWriter.append(div)
 
 			div.onclick = event => {
@@ -115,13 +164,13 @@ async function renderPrivate(users) {
 		}
 
 	}
+
+	privateUsersLength = count
 }
 
 async function renderMessages(sendUserId) {
-	const userId = window.localStorage.getItem("userId")
-
-	const message = await request(`/messages?userId=${userId}&sendUserId=${sendUserId}`)
-	const message2 = await request(`/messages?userId=${sendUserId}&sendUserId=${userId}`)
+	const message = await request(`/messages?sendUserId=${sendUserId}`)
+	const message2 = await request(`/messages?userId=${sendUserId}`)
 
 	let messages = [...message, ...message2]
 	messages = messages.sort((a, b) => a.messageId - b.messageId)
@@ -132,12 +181,12 @@ async function renderMessages(sendUserId) {
 	for(let message of messages) {
 		messageStr += `
 		<div class="row message-body">
-		<div class="col-sm-12 ${message.userId == sendUserId ? "message-main-receiver": "message-main-sender" }">
-		<div class=${message.userId == sendUserId ? "receiver": "sender"}>
-		<div class="message-text">${message.messageText}</div>
-		<span class="message-time pull-right">${dateRender(message.messageDate)}</span>
-		</div>
-		</div>
+			<div class="col-sm-12 ${message.userId == sendUserId ? "message-main-receiver": "message-main-sender" }">
+			<div class=${message.userId == sendUserId ? "receiver": "sender"}>
+				<div class="message-text">${message.messageText}</div>
+					<span class="message-time pull-right">${dateRender(message.messageDate)}</span>
+				</div>
+			</div>
 		</div>
 		`
 	}
@@ -163,10 +212,9 @@ function avatarRender(user) {
 }
 
 function profileImageRender(users) {
-	const userId = window.localStorage.getItem("userId")
-	const found = users.filter(user => user.userId == userId)
+	const userImage = window.localStorage.getItem("userImage")
 	let img = document.createElement("img")
-	img.src = backEndApi + found[0].userImage
+	img.src = backEndApi + userImage
 	headingAvatar.append(img)
 }
 
@@ -176,3 +224,4 @@ function dateRender(value) {
 	// return `${(date.getHours()).toString().padStart(2, 0)}:${(date.getMinutes()).toString().padStart(2, 0)}   |    ${(date.getDate()).toString().padStart(2, 0)}-${(date.getMonth() + 1).toString().padStart(2, 0)}-${date.getFullYear()}`
 	return `${(date.getHours()).toString().padStart(2, 0)}:${(date.getMinutes()).toString().padStart(2, 0)}`
 }
+
